@@ -1,0 +1,58 @@
+version: "3.3"
+
+services:
+  # PostgreSQL Database
+  db:
+    image: postgres:15-alpine
+    container_name: tv-series-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: tvuser
+      POSTGRES_PASSWORD: tvpassword
+      POSTGRES_DB: tvseries
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tvuser -d tvseries"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # FastAPI Backend
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: tv-series-backend
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://tvuser:tvpassword@db:5432/tvseries
+      HUGGINGFACE_API_KEY: ${HUGGINGFACE_API_KEY:-}
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # React Frontend (Nginx)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: /api
+    container_name: tv-series-frontend
+    restart: unless-stopped
+    ports:
+      - "7777:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+
